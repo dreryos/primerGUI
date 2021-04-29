@@ -5,4 +5,4 @@ The plan is to create simple GUI app in python for designing primers. It aims to
 PyQt6
 
 ## Screenshot
-![mainscreenshot](https://raw.githubusercontent.com/dreryos/primerGUI/raw/master/screen.png)
+![mainscreenshot](https://github.com/dreryos/primerGUI/raw/master/screen.png)
