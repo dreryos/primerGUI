@@ -13,9 +13,10 @@ pip install primers
 
 ## TODO:
 
-- [x] Save your specific ATTS in DB
+- [x] Save your specific ATTs in DB
 - [x] Operate with multiple targets
 - [x] Pick filling nuclides with smaller *Tm*
+- [ ] Edit/remove ATTs in DB
 - [ ] Show properties of primers
 - [ ] Export report
 
