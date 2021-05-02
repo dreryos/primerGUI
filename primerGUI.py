@@ -1,20 +1,21 @@
 import sys
+import re
 from PySide6 import QtWidgets
-
-import qtawesome as qta
+from primers import primers, Primer
 from PySide6 import QtCore, QtGui
 from PySide6.QtWidgets import (QApplication, QComboBox, QDialog, QFormLayout,
                                QGridLayout, QLabel, QLineEdit, QMessageBox,
                                QPushButton, QSpinBox, QStyle, QTableView,
-                               QTextEdit, QWidget)
+                               QPlainTextEdit, QWidget)
 from tinydb import Query, TinyDB
 
 db = TinyDB('db.json')
 
-#logo
-logo = 'logo.svg'
+nuklpatt = re.compile(r"[ATGCatgc]+")
 
-# add att to DB
+#logo
+logo = 'assets/logo.svg'
+
 
 def loadfromdb(db: TinyDB,):
     atttable = db.table('ATTs')
@@ -22,6 +23,40 @@ def loadfromdb(db: TinyDB,):
     for att in atttable.all():
         attlist.append(att['name'])
     return attlist
+
+def generatebest(target, fatt, ratt):
+    mis1 = ["A", "T", "G", "C"]
+    mis2 = ["AA", "AT", "AG", "AC", "TA", "TT", "TG", "TC", "GA", "GT", "GG", "GC", "CA", "CT", "CG", "CC"]
+
+    prev_fwd = Primer(seq='', tm=500.50, tm_total=550, gc=0.5, dg=-0.1, fwd=True, offtargets=0, penalty=1.55)
+    prev_rev = Primer(seq='', tm=500.50, tm_total=550, gc=0.5, dg=-0.1, fwd=True, offtargets=0, penalty=1.55)
+    if fatt['miss'] == 2:
+        for add in mis2:
+            fwd, rev = primers(target[:-3], fatt['seq']+add, ratt['seq'])
+            if fwd.tm_total < prev_fwd.tm_total:
+                prev_fwd = fwd
+    elif fatt['miss'] == 1:
+        for add in mis1:
+            fwd, rev = primers(target[:-3], fatt['seq']+add, ratt['seq'])
+            if fwd.tm_total < prev_fwd.tm_total:
+                prev_fwd = fwd
+    elif fatt['miss'] == 0:
+        fwd, rev = primers(target[:-3], fatt['seq'], ratt['seq'])
+        prev_fwd = fwd
+    if ratt['miss'] == 2:
+        for add in mis2:
+            fwd, rev = primers(target[:-3], fatt['seq'], ratt['seq']+add)
+            if rev.tm_total < prev_rev.tm_total:
+                prev_rev = rev
+    elif ratt['miss'] == 1:
+        for add in mis1:
+            fwd, rev = primers(target[:-3], fatt['seq'], ratt['seq']+add)
+            if rev.tm_total < prev_rev.tm_total:
+                prev_rev = rev
+    elif ratt['miss'] == 0:
+        fwd, rev = primers(target[:-3], fatt['seq'], ratt['seq'])
+        prev_rev = rev
+    return(prev_fwd, prev_rev)
 
 class StartWin(QWidget):   
     def __init__(self):
@@ -62,19 +97,38 @@ class StartWin(QWidget):
         layout.addWidget(self.textEdit, 6, 0, 1, 2)
             
         self.compbt = QPushButton("Compute")
-        layout.addWidget(self.compbt, 7, 0, 1, 2)
+        layout.addWidget(self.compbt, 7, 0, 1, 2)        
             
         #btn1 press event
-        self.editbtf.clicked.connect(self.btnpress1_clicked)
+        self.editbtf.clicked.connect(self.addeditbtn_press)
+        self.compbt.clicked.connect(self.computeprimers)        
 
         # add att but
-    def btnpress1_clicked(self):            
+    def addeditbtn_press(self):            
         self.dialog = EditATTDB()
         self.dialog.exec_()
         self.choosattf.clear()       
         self.choosattr.clear()
         self.choosattf.addItems(loadfromdb(db)) 
         self.choosattr.addItems(loadfromdb(db))
+
+    def computeprimers(self):        
+        self.compbt.hide()
+        self.inputtxt = self.textEdit.toPlainText().split("\n")
+        self.tgseqs: list = self.parse_fasta(self.inputtxt)
+        self.att = Query()
+        self.atttable = db.table('ATTs')
+        self.radd = self.atttable.search(self.att.name == self.choosattr.currentText())[0]
+        self.fadd = self.atttable.search(self.att.name == self.choosattf.currentText())[0]
+        if self.tgseqs:
+            prims = []
+            for targ in self.tgseqs:
+                fwd, rev = generatebest(targ["seq"], self.fadd, self.radd)
+                prims.append({'target': targ['name'], 'Fprimer': fwd.seq, 'Ftemp': fwd.tm_total, 'Rprimer': rev.seq, 'Rtemo': rev.tm_total})
+            print(prims)
+        else:
+            self.fastaempty()
+        self.compbt.show()
         
     def closeEvent(self, event):
         reply = QMessageBox.question(self, 'Quit', 'Are you sure you want to quit?', QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
@@ -82,6 +136,48 @@ class StartWin(QWidget):
             event.accept()
         else:
             event.ignore()
+
+    def fastaempty(self):
+        msgfasta = QMessageBox()
+        msgfasta.setWindowIcon(QtGui.QIcon(logo))
+        msgfasta.setIcon(QMessageBox.Information)
+        msgfasta.setText(f"FASTA text can't be empty")
+        msgfasta.setWindowTitle("Empty FASTA")
+        msgfasta.setStandardButtons(QMessageBox.Ok)
+        msgfasta.exec_()
+
+    
+    def msgatt(self, index):         
+        msgatt = QMessageBox()
+        msgatt.setWindowIcon(QtGui.QIcon(logo))
+        msgatt.setIcon(QMessageBox.Information)
+        msgatt.setText(f"In sequence #{index}, is a unknown nuclide")
+        msgatt.setWindowTitle("Unknown nuclide")
+        msgatt.setStandardButtons(QMessageBox.Ok)
+        msgatt.exec_()
+    
+    def parse_fasta (self, lines):
+        self.descs: list = []
+        self.seqs: list = []
+        self.data = ''
+        self.dic = []
+        for line in lines:
+            if line.startswith('>'):
+                if self.data:   # have collected a sequence, push to seqs
+                    self.seqs.append(self.data)
+                    self.data = ''
+                self.descs.append(line[1:])  # Trim '>' from beginning
+            else:
+                self.data += line.rstrip('\r\n')
+        # there will be yet one more to push when we run out
+        self.seqs.append(self.data)
+        for i in self.descs:
+            indx: int = self.descs.index(i)            
+            if not re.fullmatch(nuklpatt, self.seqs[indx]):
+                self.msgatt(indx+1)
+            if re.fullmatch(nuklpatt, self.seqs[indx]):
+                self.dic.append({'name': self.descs[indx], 'seq': self.seqs[indx]})
+        return self.dic
 
 class ATTTableModel(QtCore.QAbstractTableModel):
     header_labels = ['Name', 'Seq', 'Addon']
@@ -125,7 +221,7 @@ class EditATTDB(QDialog):
         self.data = []
         for att in self.atttable:
             self.data.append([att['name'], att['seq'], att['miss']])
-        if len(self.data) == 0:
+        if not self.data:
             self.data.append(["nothing", "please add", "some data"])
         self.model = ATTTableModel(self.data)
         self.table.setModel(self.model)
@@ -136,10 +232,10 @@ class EditATTDB(QDialog):
         self.addbt = QPushButton("Add")
         self.addbt.clicked.connect(self.addbtn)
         ltab.addWidget(self.addbt, 1, 0)
-        
+
         self.edtbt = QPushButton("Edit")
         ltab.addWidget(self.edtbt, 1, 1)
-        
+
         self.edtbt = QPushButton("Delete")
         ltab.addWidget(self.edtbt, 1, 2)
 
@@ -172,6 +268,9 @@ class AddATT(QDialog):
 
         self.seql = QLabel("ATT seq:")
         self.seqet = QLineEdit()
+        self.attregex = QtCore.QRegularExpression("[ATGCatgc]+")
+        self.attvalidator = QtGui.QRegularExpressionValidator(self.attregex)
+        self.seqet.setValidator(self.attvalidator)
         self.lt.addRow(self.seql, self.seqet)
 
         self.misl = QLabel("# of nuklids to be added:")
@@ -185,12 +284,26 @@ class AddATT(QDialog):
         self.subbt.clicked.connect(self.addatttodb)
 
     def addatttodb(self):
+        att = Query()
         atttable = db.table('ATTs')
         if self.namet.text().strip() and self.seqet.text().strip():
-            atttable.insert({'name': self.namet.text(), 'seq': self.seqet.text(), 'miss': self.miset.value()})
+            if not atttable.search(att.name == self.namet.text()):
+                atttable.insert({'name': self.namet.text(), 'seq': self.seqet.text().upper(), 'miss': self.miset.value()})
+                self.close()
+            else:
+                self.infoduplicate(self.namet.text())
         else:
             self.infoempty()
-        self.close()
+            self.close()
+
+    def infoduplicate(self, name: str):
+        self.msg = QMessageBox()
+        self.msg.setWindowIcon(QtGui.QIcon(logo))
+        self.msg.setIcon(QMessageBox.Information)
+        self.msg.setText(f"Theres is sequence with name: {name}")
+        self.msg.setWindowTitle("Duplicate name")
+        self.msg.setStandardButtons(QMessageBox.Ok)
+        self.msg.exec_()
 
     def infoempty(self):        
         self.msg = QMessageBox()
@@ -201,15 +314,48 @@ class AddATT(QDialog):
         self.msg.setStandardButtons(QMessageBox.Ok)
         self.msg.exec_()
 
-class TextEdit(QTextEdit):
+class TextEdit(QPlainTextEdit):
     def __init__(self, parent=None):
         super(TextEdit, self).__init__(parent)
 
-        self.setText("Enter target sequence in FASTA")
+        self.setPlainText("Enter target sequence in FASTA")
+        self.ffocus: bool = True
 
     def focusInEvent(self, event):
-        self.clear()
-        QTextEdit.focusInEvent(self, event)
+        if self.ffocus is True:
+            self.clear()
+            self.ffocus = False
+        QPlainTextEdit.focusInEvent(self, event)
+
+class Working(QDialog):
+    def __init__(self, parent=None):
+        super(Working, self).__init__(parent)
+        self.setWindowFlag(QtCore.Qt.WindowCloseButtonHint, False)
+        
+        self.lt = QGridLayout(self)
+
+        # Label Create
+        self.label = QtWidgets.QLabel("loading...")
+        self.label.setGeometry(25, 25, 200, 200)
+        self.label.setMinimumSize(250, 250)
+        self.label.setMaximumSize(250, 250)
+        self.label.setObjectName("lb1")
+        self.lt.addWidget(self.label, 0, 0)
+
+        # Loading the GIF
+        self.movie = QtGui.QMovie("assets/loader.gif")
+        self.label.setMovie(self.movie)
+    
+        self.startAnimation()
+
+    # Start Animation  
+    def startAnimation(self):
+        self.movie.start()
+  
+    # Stop Animation(According to need)
+    def stopAnimation(self):
+        self.movie.stop()
+    
 
 def main():
     app = QApplication(sys.argv)
