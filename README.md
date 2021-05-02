@@ -4,16 +4,18 @@ The plan is to create simple GUI app in python for designing primers. It aims to
 
 ## Used packages
 
-PyQt6
+```python
+pip install PyQt6
 re
-tinydb
-primers
+pip install tinydb
+pip install primers
+```
 
 ## TODO:
 
 - [x] Save your specific ATTS in DB
 - [x] Operate with multiple targets
-- [x] Pick filling nuclides with smaller Tm
+- [x] Pick filling nuclides with smaller *Tm*
 - [ ] Show properties of primers
 - [ ] Export report
 
