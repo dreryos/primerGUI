@@ -6,7 +6,7 @@ from PySide6 import QtCore, QtGui
 from PySide6.QtWidgets import (QApplication, QComboBox, QDialog, QFormLayout,
                                QGridLayout, QLabel, QLineEdit, QMessageBox,
                                QPushButton, QSpinBox, QStyle, QTableView,
-                               QPlainTextEdit, QWidget)
+                               QPlainTextEdit, QWidget, QTabWidget, QTextEdit, QVBoxLayout, QHBoxLayout, QCheckBox, QRadioButton)
 from tinydb import Query, TinyDB
 
 db = TinyDB('db.json')
@@ -24,6 +24,7 @@ def loadfromdb(db: TinyDB,):
         attlist.append(att['name'])
     return attlist
 
+#Pick lowest option for filling
 def generatebest(target, fatt, ratt):
     mis1 = ["A", "T", "G", "C"]
     mis2 = ["AA", "AT", "AG", "AC", "TA", "TT", "TG", "TC", "GA", "GT", "GG", "GC", "CA", "CT", "CG", "CC"]
@@ -58,6 +59,7 @@ def generatebest(target, fatt, ratt):
         prev_rev = rev
     return(prev_fwd, prev_rev)
 
+#Main window
 class StartWin(QWidget):   
     def __init__(self):
         super().__init__()
@@ -99,11 +101,9 @@ class StartWin(QWidget):
         self.compbt = QPushButton("Compute")
         layout.addWidget(self.compbt, 7, 0, 1, 2)        
             
-        #btn1 press event
         self.editbtf.clicked.connect(self.addeditbtn_press)
         self.compbt.clicked.connect(self.computeprimers)        
 
-        # add att but
     def addeditbtn_press(self):            
         self.dialog = EditATTDB()
         self.dialog.exec_()
@@ -112,8 +112,7 @@ class StartWin(QWidget):
         self.choosattf.addItems(loadfromdb(db)) 
         self.choosattr.addItems(loadfromdb(db))
 
-    def computeprimers(self):        
-        self.compbt.hide()
+    def computeprimers(self):
         self.inputtxt = self.textEdit.toPlainText().split("\n")
         self.tgseqs: list = self.parse_fasta(self.inputtxt)
         self.att = Query()
@@ -121,14 +120,10 @@ class StartWin(QWidget):
         self.radd = self.atttable.search(self.att.name == self.choosattr.currentText())[0]
         self.fadd = self.atttable.search(self.att.name == self.choosattf.currentText())[0]
         if self.tgseqs:
-            prims = []
-            for targ in self.tgseqs:
-                fwd, rev = generatebest(targ["seq"], self.fadd, self.radd)
-                prims.append({'target': targ['name'], 'Fprimer': fwd.seq, 'Ftemp': fwd.tm_total, 'Rprimer': rev.seq, 'Rtemo': rev.tm_total})
-            print(prims)
+            self.resultw = Result(targets=self.tgseqs, fadd=self.fadd, radd=self.radd)
+            self.resultw.show()
         else:
             self.fastaempty()
-        self.compbt.show()
         
     def closeEvent(self, event):
         reply = QMessageBox.question(self, 'Quit', 'Are you sure you want to quit?', QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
@@ -187,9 +182,6 @@ class ATTTableModel(QtCore.QAbstractTableModel):
 
     def data(self, index, role):
         if role == QtCore.Qt.DisplayRole:
-            # See below for the nested-list data structure.
-            # .row() indexes into the outer list,
-            # .column() indexes into the sub-list
             return self._data[index.row()][index.column()]
     
     def headerData(self, section, orientation, role=QtCore.Qt.DisplayRole):
@@ -327,35 +319,53 @@ class TextEdit(QPlainTextEdit):
             self.ffocus = False
         QPlainTextEdit.focusInEvent(self, event)
 
-class Working(QDialog):
-    def __init__(self, parent=None):
-        super(Working, self).__init__(parent)
-        self.setWindowFlag(QtCore.Qt.WindowCloseButtonHint, False)
+class Result(QTabWidget):
+    def __init__(self, targets, fadd, radd, parent = None):
+        super(Result, self).__init__(parent)        
+        self.setWindowTitle("Results")
+        self.setWindowIcon(QtGui.QIcon(logo))
+        self.resize(400, 150)
+        self.prims = []
+        for targ in targets:
+            fwd, rev = generatebest(targ["seq"], fadd, radd)
+            self.prims.append({'target': targ['name'], 'Fprimer': fwd.seq, 'Ftemp': fwd.tm_total, 'Rprimer': rev.seq, 'Rtemp': rev.tm_total})
+		
+        for prim in self.prims:
+            self.tab = QWidget()
+            self.addTab(self.tab, prim['target'])
+            self.tabUI(prim)
+		
+    def tabUI(self, prim):
+        self.fprim = prim['Fprimer']
+        self.ftemp = str(f"{prim['Ftemp']} °C")        
+        self.rprim = prim['Rprimer']
+        self.rtemp = str(f"{prim['Rtemp']} °C")
+
+        layout = QGridLayout(self)
+        self.tab.setLayout(layout)
+
+        #R primers
+        self.fplb = QLabel("Fprimer:")
+        layout.addWidget(self.fplb, 0, 0)
+        self.fpte = QLineEdit(self.fprim)
+        self.fpte.setReadOnly(True)
+        layout.addWidget(self.fpte, 0, 1)
+        self.fplbtm = QLabel("Fprimer TM_total:")
+        layout.addWidget(self.fplbtm, 1, 0)
+        self.fptemp = QLabel(self.ftemp)
+        layout.addWidget(self.fptemp, 1, 1)
+
+        #R primers
+        self.rplb = QLabel("Rprimer:")
+        layout.addWidget(self.rplb, 2, 0)
+        self.rpte = QLineEdit(self.rprim)
+        self.rpte.setReadOnly(True)
+        layout.addWidget(self.rpte, 2, 1)
+        self.rplbtm = QLabel("Rprimer TM_total:")
+        layout.addWidget(self.rplbtm, 3, 0)
+        self.rptemp = QLabel(self.rtemp)
+        layout.addWidget(self.rptemp, 3, 1)
         
-        self.lt = QGridLayout(self)
-
-        # Label Create
-        self.label = QtWidgets.QLabel("loading...")
-        self.label.setGeometry(25, 25, 200, 200)
-        self.label.setMinimumSize(250, 250)
-        self.label.setMaximumSize(250, 250)
-        self.label.setObjectName("lb1")
-        self.lt.addWidget(self.label, 0, 0)
-
-        # Loading the GIF
-        self.movie = QtGui.QMovie("assets/loader.gif")
-        self.label.setMovie(self.movie)
-    
-        self.startAnimation()
-
-    # Start Animation  
-    def startAnimation(self):
-        self.movie.start()
-  
-    # Stop Animation(According to need)
-    def stopAnimation(self):
-        self.movie.stop()
-    
 
 def main():
     app = QApplication(sys.argv)
