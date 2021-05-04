@@ -16,7 +16,7 @@ nuklpatt = re.compile(r"[ATGCatgc]+")
 #logo
 logo = 'assets/logo.svg'
 
-
+#load database for ATTs
 def loadfromdb(db: TinyDB,):
     atttable = db.table('ATTs')
     attlist: list[str] = []
@@ -26,11 +26,13 @@ def loadfromdb(db: TinyDB,):
 
 #Pick lowest option for filling
 def generatebest(target, fatt, ratt):
+    #Generete all possible fillings
     mis1 = ["A", "T", "G", "C"]
     mis2 = ["AA", "AT", "AG", "AC", "TA", "TT", "TG", "TC", "GA", "GT", "GG", "GC", "CA", "CT", "CG", "CC"]
-
+    #dummy hight temp primers
     prev_fwd = Primer(seq='', tm=500.50, tm_total=550, gc=0.5, dg=-0.1, fwd=True, offtargets=0, penalty=1.55)
     prev_rev = Primer(seq='', tm=500.50, tm_total=550, gc=0.5, dg=-0.1, fwd=True, offtargets=0, penalty=1.55)
+    #F primer fillings
     if fatt['miss'] == 2:
         for add in mis2:
             fwd, rev = primers(target[:-3], fatt['seq']+add, ratt['seq'])
@@ -44,6 +46,7 @@ def generatebest(target, fatt, ratt):
     elif fatt['miss'] == 0:
         fwd, rev = primers(target[:-3], fatt['seq'], ratt['seq'])
         prev_fwd = fwd
+    #R primer fillings
     if ratt['miss'] == 2:
         for add in mis2:
             fwd, rev = primers(target[:-3], fatt['seq'], ratt['seq']+add)
@@ -132,6 +135,7 @@ class StartWin(QWidget):
         else:
             event.ignore()
 
+    #Empty FASTA error
     def fastaempty(self):
         msgfasta = QMessageBox()
         msgfasta.setWindowIcon(QtGui.QIcon(logo))
@@ -141,7 +145,7 @@ class StartWin(QWidget):
         msgfasta.setStandardButtons(QMessageBox.Ok)
         msgfasta.exec_()
 
-    
+    #Unknown nuclide error
     def msgatt(self, index):         
         msgatt = QMessageBox()
         msgatt.setWindowIcon(QtGui.QIcon(logo))
@@ -150,7 +154,8 @@ class StartWin(QWidget):
         msgatt.setWindowTitle("Unknown nuclide")
         msgatt.setStandardButtons(QMessageBox.Ok)
         msgatt.exec_()
-    
+
+    #parsing FASTA to dict of targets
     def parse_fasta (self, lines):
         self.descs: list = []
         self.seqs: list = []
@@ -174,6 +179,7 @@ class StartWin(QWidget):
                 self.dic.append({'name': self.descs[indx], 'seq': self.seqs[indx]})
         return self.dic
 
+#Model of ATT tab
 class ATTTableModel(QtCore.QAbstractTableModel):
     header_labels = ['Name', 'Seq', 'Addon']
     def __init__(self, data):
@@ -198,6 +204,7 @@ class ATTTableModel(QtCore.QAbstractTableModel):
         # the length (only works if all rows are an equal length)
         return len(self._data[0])
 
+#Dialog of table of ATTs in DB
 class EditATTDB(QDialog):
     def __init__(self, parent=None):
         super(EditATTDB, self).__init__(parent)
@@ -226,10 +233,12 @@ class EditATTDB(QDialog):
         ltab.addWidget(self.addbt, 1, 0)
 
         self.edtbt = QPushButton("Edit")
+        self.edtbt.setEnabled(False)
         ltab.addWidget(self.edtbt, 1, 1)
 
-        self.edtbt = QPushButton("Delete")
-        ltab.addWidget(self.edtbt, 1, 2)
+        self.delbt = QPushButton("Delete")
+        self.delbt.setEnabled(False)
+        ltab.addWidget(self.delbt, 1, 2)
 
     def viewclicked(self, clickedIndex):
         row=clickedIndex.row()
@@ -244,7 +253,7 @@ class EditATTDB(QDialog):
         self.model = ATTTableModel(self.data)
         self.table.setModel(self.model)
 
-
+#Dialog for adding (editing) of ATT
 class AddATT(QDialog):
     def __init__(self, parent=None):
         super(AddATT, self).__init__(parent)
@@ -306,6 +315,7 @@ class AddATT(QDialog):
         self.msg.setStandardButtons(QMessageBox.Ok)
         self.msg.exec_()
 
+#FASTA Text edit field
 class TextEdit(QPlainTextEdit):
     def __init__(self, parent=None):
         super(TextEdit, self).__init__(parent)
@@ -319,6 +329,7 @@ class TextEdit(QPlainTextEdit):
             self.ffocus = False
         QPlainTextEdit.focusInEvent(self, event)
 
+#Result window, shows in tab primers sequences and their temp
 class Result(QTabWidget):
     def __init__(self, targets, fadd, radd, parent = None):
         super(Result, self).__init__(parent)        
