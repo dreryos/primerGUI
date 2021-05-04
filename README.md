@@ -1,6 +1,6 @@
 # primerGUI
 
-The plan is to create simple GUI app in python for designing primers. It aims to automatize selecting "missing nuklids" for specific ATTs.
+The plan is to create simple GUI app in python for designing primers. It aims to automatize selecting "missing nuclides" for specific ATTs.
 
 ## Used packages
 
@@ -10,6 +10,10 @@ re
 pip install tinydb
 pip install primers
 ```
+
+[PyQt6](https://pypi.org/project/PyQt6/)
+[tinydb](https://pypi.org/project/tinydb)
+[primers](https://pypi.org/project/primers/)
 
 ## TODO:
 
